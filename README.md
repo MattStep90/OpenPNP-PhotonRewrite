@@ -2,6 +2,30 @@
 
 # OpenPnP
 
+> **This is a fork of OpenPnP, not the official OpenPnP release.**
+> It adds Photon feeder improvements made for a LumenPnP and is maintained separately at
+> [MattStep90/OpenPNP-PhotonRewrite](https://github.com/MattStep90/OpenPNP-PhotonRewrite).
+> It is not supported by the OpenPnP project, so please don't report its issues upstream.
+> For the official software, see [openpnp/openpnp](https://github.com/openpnp/openpnp).
+
+## What this fork adds
+
+Branch `feature/photon-feeder-record`, based on OpenPnP `main` at 5bd404c (November 2026):
+
+- **Reel record in the feeder:** part, count, tape width, pitch, low-parts warning and rotation in tape are stored in the feeder's flash and read back by OpenPnP.
+- **Scan Part:** load a reel from its label (ECIA 2D or 1D codes) or a typed part number.
+- **Pin 1 Quadrant picker:** sets the rotation in tape from the datasheet's EIA-481 quadrant.
+- **Auto Setup:** teach the first and last slot of each rail, then every feeder's pick point is measured from its sprocket holes. Optional pick height probing, empty pocket check and vacuum level learning.
+- **Firmware updates over the bus:** one feeder or all feeders, without an FTDI cable.
+- **Drive calibration, Fix Lost Slots, failed-pick recheck and check-every-pick.**
+- **Faster jobs:** feeders of a cycle advance together, with an optional feed right after each pick.
+- **Footprint overlay** on the top camera and a Feeders list sorted by slot.
+
+Most of these need the rewritten Photon feeder firmware (PhotonFeeder_F031) with the feeder record
+commands. A machine.xml saved by this fork may not load in stock OpenPnP, so keep a backup.
+
+The rest of this README is the original OpenPnP README.
+
 Open Source SMT Pick and Place Hardware and Software
 
 ## Introduction
