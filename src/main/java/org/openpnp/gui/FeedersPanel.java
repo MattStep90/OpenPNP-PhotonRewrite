@@ -26,6 +26,7 @@ import java.awt.event.ActionEvent;
 import java.beans.PropertyChangeEvent;
 import java.beans.PropertyChangeListener;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.prefs.Preferences;
@@ -51,6 +52,8 @@ import javax.swing.JTextField;
 import javax.swing.JToolBar;
 import javax.swing.ListSelectionModel;
 import javax.swing.RowFilter;
+import javax.swing.RowSorter;
+import javax.swing.SortOrder;
 import javax.swing.SwingUtilities;
 import javax.swing.event.DocumentEvent;
 import javax.swing.event.DocumentListener;
@@ -61,6 +64,8 @@ import javax.swing.table.TableRowSorter;
 import org.openpnp.Translations;
 import org.openpnp.events.FeederSelectedEvent;
 import org.openpnp.gui.components.AutoSelectTextTable;
+import org.openpnp.gui.components.CameraView;
+import org.openpnp.gui.components.reticle.FeederFootprintReticle;
 import org.openpnp.gui.components.ClassSelectionDialog;
 import org.openpnp.gui.support.AbstractConfigurationWizard;
 import org.openpnp.gui.support.ActionGroup;
@@ -71,6 +76,7 @@ import org.openpnp.gui.support.MessageBoxes;
 import org.openpnp.gui.support.Wizard;
 import org.openpnp.gui.support.WizardContainer;
 import org.openpnp.gui.tablemodel.FeedersTableModel;
+import org.openpnp.machine.photon.PhotonFeeder;
 import org.openpnp.machine.reference.vision.AbstractPartAlignment;
 import org.openpnp.machine.reference.vision.ReferenceBottomVision;
 import org.openpnp.machine.reference.ReferenceFeeder;
@@ -228,6 +234,10 @@ public class FeedersPanel extends JPanel implements WizardContainer {
         table.setDefaultEditor(ReferenceFeeder.Priority.class, new DefaultCellEditor(priorityComboBox));
 
         tableSorter = new TableRowSorter<>(tableModel);
+        // Photon feeders by slot number rather than by their hardware ID, and sorted that way
+        // from the start
+        tableSorter.setComparator(0, (Comparator<String>) PhotonFeeder::compareNames);
+        tableSorter.setSortKeys(List.of(new RowSorter.SortKey(0, SortOrder.ASCENDING)));
         table.getColumnModel().moveColumn(1,  2);
 
         final JSplitPane splitPane = new JSplitPane();
@@ -265,6 +275,7 @@ public class FeedersPanel extends JPanel implements WizardContainer {
                     return;
                 }
                 List<Feeder> selections = getSelections();
+                showPickFootprint(selections.size() == 1 ? selections.get(0) : null);
                 if (selections.size() == 0) {
                     singleSelectActionGroup.setEnabled(false);
                     multiSelectActionGroup.setEnabled(false);
@@ -455,6 +466,31 @@ public class FeedersPanel extends JPanel implements WizardContainer {
             }
         }
         return null;
+    }
+
+    private static final String PICK_FOOTPRINT_RETICLE = FeedersPanel.class.getName() + ".pickFootprint";
+
+    /**
+     * Overlays the selected feeder's part footprint, turned to its pick rotation, on the top
+     * camera, to check the part lies in the feeder the way OpenPnP thinks.
+     */
+    private void showPickFootprint(Feeder feeder) {
+        try {
+            CameraView cameraView = mainFrame.getCameraViews().getCameraView(
+                    Configuration.get().getMachine().getDefaultHead().getDefaultCamera());
+            if (cameraView == null) {
+                return;
+            }
+            if (feeder == null) {
+                cameraView.removeReticle(PICK_FOOTPRINT_RETICLE);
+            }
+            else {
+                cameraView.setReticle(PICK_FOOTPRINT_RETICLE, new FeederFootprintReticle(feeder));
+            }
+        }
+        catch (Exception e) {
+            // No top camera
+        }
     }
 
     public Feeder getSelection() {
@@ -925,5 +961,16 @@ public class FeedersPanel extends JPanel implements WizardContainer {
 
     public void refresh(Feeder f) {
         tableModel.refresh(f);
+    }
+
+    /**
+     * Reloads the feeder list and rebuilds the configuration tabs of the selected feeder, for
+     * when something other than this panel changed which feeders exist or what they are, such
+     * as a feeder search.
+     */
+    public void reloadFeeders() {
+        Feeder selected = getSelection();
+        tableModel.refresh();
+        Helpers.selectObjectTableRow(table, selected);
     }
 }

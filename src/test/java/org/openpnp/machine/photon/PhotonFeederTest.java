@@ -327,10 +327,34 @@ public class PhotonFeederTest {
         bus.when(new InitializeFeeder(feederAddress, hardwareId))
                 .reply(responses.initializeFeeder.ok(feederAddress, hardwareId));
 
+        bus.when(new VendorOptions(feederAddress, PhotonFeederRecord.statusRequest()))
+                .reply(responses.vendorOptions.ok(feederAddress));
+
         feeder.prepareForJob(false);
 
         assertEquals(feederAddress, (int) feeder.getSlotAddress());
         assertTrue(feeder.isInitialized());
+
+        bus.verifyInMockedOrder();
+    }
+
+    @Test
+    public void prepareForJobReadsTheRecordOnceForManyPlacements() throws Exception {
+        feeder.setHardwareId(hardwareId);
+        feeder.setOffset(feederOffset);
+        feeder.setSlotAddress(feederAddress);
+        setSlotLocation(feederAddress, baseLocation);
+
+        bus.when(new InitializeFeeder(feederAddress, hardwareId))
+                .reply(responses.initializeFeeder.ok(feederAddress, hardwareId));
+
+        bus.when(new VendorOptions(feederAddress, PhotonFeederRecord.statusRequest()))
+                .reply(responses.vendorOptions.ok(feederAddress));
+
+        // The job processor prepares a feeder once per placement it serves
+        for (int i = 0; i < 5; i++) {
+            feeder.prepareForJob(false);
+        }
 
         bus.verifyInMockedOrder();
     }
@@ -344,6 +368,9 @@ public class PhotonFeederTest {
 
         bus.when(new InitializeFeeder(feederAddress, hardwareId))
                 .reply(responses.initializeFeeder.ok(feederAddress, hardwareId));
+
+        bus.when(new VendorOptions(feederAddress, PhotonFeederRecord.statusRequest()))
+                .reply(responses.vendorOptions.ok(feederAddress));
 
         feeder.prepareForJob(false);
 
@@ -395,6 +422,9 @@ public class PhotonFeederTest {
         bus.when(new InitializeFeeder(newAddress, hardwareId))
                 .reply(responses.initializeFeeder.ok(newAddress, hardwareId));
 
+        bus.when(new VendorOptions(newAddress, PhotonFeederRecord.statusRequest()))
+                .reply(responses.vendorOptions.ok(newAddress));
+
         feeder.prepareForJob(false);
 
         assertEquals(newAddress, (int) feeder.getSlotAddress());
@@ -424,6 +454,9 @@ public class PhotonFeederTest {
 
         bus.when(new InitializeFeeder(newAddress, hardwareId))
                 .reply(responses.initializeFeeder.ok(newAddress, hardwareId));
+
+        bus.when(new VendorOptions(newAddress, PhotonFeederRecord.statusRequest()))
+                .reply(responses.vendorOptions.ok(newAddress));
 
         feeder.prepareForJob(false);
 
@@ -463,6 +496,9 @@ public class PhotonFeederTest {
 
         bus.when(new InitializeFeeder(newAddress, hardwareId))
                 .reply(responses.initializeFeeder.ok(newAddress, hardwareId));
+
+        bus.when(new VendorOptions(newAddress, PhotonFeederRecord.statusRequest()))
+                .reply(responses.vendorOptions.ok(newAddress));
 
         feeder.prepareForJob(false);
 
@@ -610,6 +646,144 @@ public class PhotonFeederTest {
         feeder.feed(mockedNozzle);
 
         bus.verifyInMockedOrder();
+    }
+
+    private void readyToFeed() {
+        feeder.setHardwareId(hardwareId);
+        feeder.setPartPitch(2);
+        feeder.setOffset(feederOffset);
+        feeder.setSlotAddress(feederAddress);
+        feeder.setMoveWhileFeeding(false);
+        feeder.setEnabled(true);
+        feeder.setPart(new Part("test-part"));
+        setSlotLocation(feederAddress, baseLocation);
+    }
+
+    @Test
+    public void feedAheadStartsTheFeedWithoutWaiting() throws Exception {
+        readyToFeed();
+
+        bus.when(new InitializeFeeder(feederAddress, hardwareId))
+                .reply(responses.initializeFeeder.ok(feederAddress, hardwareId));
+
+        bus.when(new MoveFeedForward(feederAddress, 20))
+                .reply(responses.moveFeedForward.ok(feederAddress, 0));
+
+        PhotonFeeder.feedAhead(List.of(feeder));
+
+        bus.verifyInMockedOrder();
+    }
+
+    @Test
+    public void feedAfterFeedAheadOnlyWaitsForTheMove() throws Exception {
+        readyToFeed();
+
+        bus.when(new InitializeFeeder(feederAddress, hardwareId))
+                .reply(responses.initializeFeeder.ok(feederAddress, hardwareId));
+
+        bus.when(new MoveFeedForward(feederAddress, 20))
+                .reply(responses.moveFeedForward.ok(feederAddress, 0));
+
+        bus.when(new MoveFeedStatus(feederAddress))
+                .reply(responses.moveFeedStatus.ok(feederAddress));
+
+        PhotonFeeder.feedAhead(List.of(feeder, feeder));
+        feeder.feed(mockedNozzle);
+
+        // One forward move for the duplicate and for the feed that followed
+        bus.verifyInMockedOrder();
+    }
+
+    @Test
+    public void feedAheadLeavesSkippedFeedersAlone() throws Exception {
+        readyToFeed();
+        feeder.setFeedOptions(PhotonFeeder.FeedOptions.SkipNext);
+
+        PhotonFeeder.feedAhead(List.of(feeder));
+
+        bus.verifyNothingSent();
+    }
+
+    @Test
+    public void feedFeedsNormallyWhenFeedAheadGotNoReply() throws Exception {
+        readyToFeed();
+
+        InitializeFeeder initializeFeeder = new InitializeFeeder(feederAddress, hardwareId);
+        bus.when(initializeFeeder)
+                .reply(responses.initializeFeeder.ok(feederAddress, hardwareId));
+
+        MoveFeedForward moveFeedForward = new MoveFeedForward(feederAddress, 20);
+        bus.when(moveFeedForward).timeout();
+
+        PhotonFeeder.feedAhead(List.of(feeder));
+
+        bus.when(moveFeedForward)
+                .reply(responses.moveFeedForward.ok(feederAddress, 0));
+        MoveFeedStatus moveFeedStatus = new MoveFeedStatus(feederAddress);
+        bus.when(moveFeedStatus)
+                .reply(responses.moveFeedStatus.ok(feederAddress));
+
+        feeder.feed(mockedNozzle);
+
+        bus.verify(initializeFeeder)
+                .then(moveFeedForward)
+                .then(moveFeedForward)
+                .then(moveFeedStatus)
+                .nothingElseSent();
+    }
+
+    @Test
+    public void postPickFeedsTheNextPartWhenFeedAfterPickIsOn() throws Exception {
+        readyToFeed();
+        photonProperties.setFeedAfterPick(true);
+
+        bus.when(new InitializeFeeder(feederAddress, hardwareId))
+                .reply(responses.initializeFeeder.ok(feederAddress, hardwareId));
+
+        bus.when(new MoveFeedForward(feederAddress, 20))
+                .reply(responses.moveFeedForward.ok(feederAddress, 0));
+
+        bus.when(new MoveFeedStatus(feederAddress))
+                .reply(responses.moveFeedStatus.ok(feederAddress));
+
+        feeder.postPick(mockedNozzle);
+        feeder.feed(mockedNozzle);
+
+        bus.verifyInMockedOrder();
+    }
+
+    @Test
+    public void postPickDoesNotFeedWhenFeedAfterPickIsOff() throws Exception {
+        readyToFeed();
+
+        feeder.postPick(mockedNozzle);
+
+        bus.verifyNothingSent();
+    }
+
+    @Test
+    public void aPartFedBeforeARestartIsPickedWithoutFeeding() throws Exception {
+        readyToFeed();
+        // As loaded from the configuration
+        feeder.fedAhead = true;
+
+        feeder.feed(mockedNozzle);
+
+        bus.verifyNothingSent();
+        assertFalse(feeder.fedAhead);
+    }
+
+    @Test
+    public void aNewReelForgetsThePartFedAhead() throws Exception {
+        readyToFeed();
+        feeder.setRecord(new PhotonFeederRecord(true, 8, 20, 5000, 0, 5000, false, "R0402-10K"));
+        feeder.fedAhead = true;
+
+        feeder.setRecord(new PhotonFeederRecord(true, 8, 20, 5000, 20, 4999, false, "R0402-10K"));
+        assertTrue(feeder.fedAhead, "same reel");
+
+        feeder.setRecord(new PhotonFeederRecord(true, 8, 20, 4000, 0, 4000, false, "C0402-100N"));
+        assertFalse(feeder.fedAhead, "new reel");
     }
 
     @Test
@@ -878,12 +1052,19 @@ public class PhotonFeederTest {
         bus.when(initializeFeederBInSlot2)
                 .reply(responses.initializeFeeder.ok(2, hardwareIdB));
 
+        // Both feeders have no reel recorded
+        VendorOptions readRecordA = new VendorOptions(1, PhotonFeederRecord.statusRequest());
+        bus.when(readRecordA).reply(responses.vendorOptions.ok(1));
+
+        VendorOptions readRecordB = new VendorOptions(2, PhotonFeederRecord.statusRequest());
+        bus.when(readRecordB).reply(responses.vendorOptions.ok(2));
+
         // Prepare both feeders for the job
         feederA.prepareForJob(false);
-        bus.verify(initializeFeederAInSlot1);
+        bus.verify(initializeFeederAInSlot1).then(readRecordA);
 
         feederB.prepareForJob(false);
-        bus.verify(initializeFeederBInSlot2);
+        bus.verify(initializeFeederBInSlot2).then(readRecordB);
 
         bus.verifyNothingSent();  // No more calls yet
 
@@ -1011,6 +1192,23 @@ public class PhotonFeederTest {
         }
 
         bus.verifyInMockedOrder();
+    }
+
+    @Test
+    public void findAllFeedersGivesNewFeedersThePlaceholderPart() throws Exception {
+        photonProperties.setMaxFeederAddress(1);
+        // The default configuration already has FIDUCIAL-HOME
+        Part placeholder = Configuration.get().getPart(PhotonFeeder.PLACEHOLDER_PART_ID);
+        assertNotNull(placeholder);
+        String newHardwareUuid = "FFEEDDCCBBAA998877665544";
+        bus.when(new GetFeederId(1))
+                .reply(responses.getFeederId.ok(1, newHardwareUuid));
+
+        PhotonFeeder.findAllFeeders(null);
+
+        PhotonFeeder newFeeder = PhotonFeeder.findByHardwareId(newHardwareUuid);
+        assertNotNull(newFeeder);
+        assertSame(placeholder, newFeeder.getPart());
     }
 
     @Test
@@ -1264,5 +1462,16 @@ public class PhotonFeederTest {
         Location expectedLocation = new Location(LengthUnit.Millimeters, 2, 3, 3, 45);
 
         assertEquals(expectedLocation, actualLocation);
+    }
+
+    @Test
+    public void namesSortBySlotNumber() {
+        List<String> names = new ArrayList<>(List.of("Strip 2", "002D801A (Slot: 12)", "FFFF (Slot: None)",
+                "0001 (Slot: 7)", "a feeder", "0000 (Slot: 100)"));
+
+        names.sort(PhotonFeeder::compareNames);
+
+        assertEquals(List.of("0001 (Slot: 7)", "002D801A (Slot: 12)", "0000 (Slot: 100)", "a feeder",
+                "FFFF (Slot: None)", "Strip 2"), names);
     }
 }

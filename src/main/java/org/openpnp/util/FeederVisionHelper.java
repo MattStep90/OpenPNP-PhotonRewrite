@@ -428,6 +428,20 @@ public class FeederVisionHelper {
         }
     }
 
+    /**
+     * Snaps a pick point's distance along the tape from a sprocket hole to a pocket centre. By
+     * EIA-481 a pocket centre lies 2 mm from a hole, so with 4 mm pitch and up it is halfway
+     * between two holes; only 2 mm pitch tape also has pockets in line with the holes.
+     */
+    static double nominalAlongTape(double alongMm, double partPitchMm) {
+        final double partPitchMinMm = 2;
+        final double sprocketHolePitchMm = 4;
+        if (partPitchMm >= sprocketHolePitchMm) {
+            return Math.round((alongMm - partPitchMinMm)/sprocketHolePitchMm)*sprocketHolePitchMm + partPitchMinMm;
+        }
+        return Math.round(alongMm/partPitchMinMm)*partPitchMinMm;
+    }
+
 /*
  * This method will use Computer Vision to detect and calculate EIA-481 standard tape features - holes & part pockets
  * - detects the tape holes first as they are defined in the standard, 4mm apart
@@ -468,7 +482,6 @@ public class FeederVisionHelper {
                 calibratedPickLocation  = partLocation;
             }
             else {
-                final double partPitchMinMm = 2;
                 final double sprocketHoleToPartMinMm = 3.5; // sprocket hole to part @ 8mm
                 final double sprocketHoleToPartGridMm = 2;  // +multiples of 2mm for wider tapes
                 final double sprocketHoleDiameterPx = sprocketHoleDiameterMm/mmScale.getX();
@@ -678,7 +691,8 @@ public class FeederVisionHelper {
                                 // normalize to a nominal local pick location according to EIA 481
                                 if (normalizePickLocation) {
                                     relativePickLocation = new Location(LengthUnit.Millimeters,
-                                            Math.round(relativePickLocation.getX()/partPitchMinMm)*partPitchMinMm,
+                                            nominalAlongTape(relativePickLocation.getX(),
+                                                    settings.partPitch.convertToUnits(LengthUnit.Millimeters).getValue()),
                                             -sprocketHoleToPartMinMm+Math.round((relativePickLocation.getY()+sprocketHoleToPartMinMm)/sprocketHoleToPartGridMm)*sprocketHoleToPartGridMm,
                                             0, 0);
                                 }

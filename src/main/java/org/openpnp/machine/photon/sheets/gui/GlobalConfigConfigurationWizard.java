@@ -73,6 +73,29 @@ public class GlobalConfigConfigurationWizard extends AbstractConfigurationWizard
         progressBarPanel.setVisible(false);
         progressBarPanel.setNumberOfElements(initialMaxFeederAddress);
 
+        contentPanel.add(new AutoSetupPanel(photonProperties, GlobalConfigConfigurationWizard::reloadFeeders));
+
+        JPanel firmwarePanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 6, 4));
+        firmwarePanel.setBorder(new TitledBorder(null, "Feeder Firmware", TitledBorder.LEADING, TitledBorder.TOP, null, null));
+        JButton updateAllButton = new JButton("Update All Feeders...");
+        updateAllButton.setToolTipText("Write new firmware to every feeder in a slot, one at a time, "
+                + "with the Stock or Ratchet file to match each feeder.");
+        updateAllButton.addActionListener(e -> FirmwareUpdateAllDialog.start());
+        firmwarePanel.add(updateAllButton);
+        firmwarePanel.add(new JLabel("Choose both PhotonFeeder_F031_Stock.bin and _Ratchet.bin to update a mixed machine."));
+        contentPanel.add(firmwarePanel);
+
+        JPanel lostSlotsPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 6, 4));
+        lostSlotsPanel.setBorder(new TitledBorder(null, "Lost Slot IDs", TitledBorder.LEADING, TitledBorder.TOP, null, null));
+        JButton fixLostSlotsButton = new JButton("Fix Lost Slots...");
+        fixLostSlotsButton.setToolTipText("Write the slot ID again for feeders whose slot lost it (blue LED), "
+                + "with all the feeders left in.");
+        fixLostSlotsButton.addActionListener(e ->
+                FixLostSlotsDialog.start(fixLostSlotsButton, GlobalConfigConfigurationWizard::reloadFeeders));
+        lostSlotsPanel.add(fixLostSlotsButton);
+        lostSlotsPanel.add(new JLabel("Each feeder to fix blinks, and you say which slot it's in."));
+        contentPanel.add(lostSlotsPanel);
+
         JPanel programFeederSlotsPanel = new JPanel();
         programFeederSlotsPanel.setBorder(new TitledBorder(null, "Program Feeder Slots", TitledBorder.LEADING, TitledBorder.TOP, null, null));
         contentPanel.add(programFeederSlotsPanel);
@@ -125,11 +148,14 @@ public class GlobalConfigConfigurationWizard extends AbstractConfigurationWizard
 
             UiUtils.submitUiMachineTask(() -> {
                 PhotonFeeder.findAllFeeders(progressBarPanel::updateFeederState);
+                PhotonFeeder.readAllRecordsQuietly();
                 return null;
             }, (parameter) -> {
                 resetState();
+                reloadFeeders();
             }, (throwable) -> {
                 resetState();
+                reloadFeeders();
 
                 MessageBoxes.errorBox(MainFrame.get(), "Error", throwable);
             });
@@ -142,4 +168,13 @@ public class GlobalConfigConfigurationWizard extends AbstractConfigurationWizard
             maxFeederSpinner.setEnabled(true);
         }
     };
+
+    // The search may have filled in the selected feeder or added new ones, so show them as
+    // they are now instead of the configuration from before the search.
+    private static void reloadFeeders() {
+        MainFrame mainFrame = MainFrame.get();
+        if (mainFrame != null && mainFrame.getFeedersTab() != null) {
+            mainFrame.getFeedersTab().reloadFeeders();
+        }
+    }
 }

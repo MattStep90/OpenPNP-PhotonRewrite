@@ -36,6 +36,7 @@ import org.openpnp.Translations;
 import org.openpnp.gui.JobPanel;
 import org.openpnp.gui.MainFrame;
 import org.openpnp.gui.support.Wizard;
+import org.openpnp.machine.photon.PhotonFeeder;
 import org.openpnp.machine.reference.vision.AbstractPartAlignment;
 import org.openpnp.machine.reference.wizards.ReferencePnpJobProcessorConfigurationWizard;
 import org.openpnp.machine.reference.ReferenceFeeder;
@@ -1259,6 +1260,7 @@ public class ReferencePnpJobProcessor extends AbstractPnpJobProcessor {
             // nozzle rotation mode has to be applied. If not, the pickLocation may
             // return the wrong angle.
             Location otherFeederLocation = previousPickPlanStartLocation;
+            List<Feeder> plannedFeeders = new ArrayList<>();
             for (PlannedPlacement p : plannedPlacements) {
                 JobPlacement jobPlacement = p.jobPlacement;
                 Placement placement = jobPlacement.getPlacement();
@@ -1268,6 +1270,7 @@ public class ReferencePnpJobProcessor extends AbstractPnpJobProcessor {
 
                 Feeder feeder = findFeeder(machine,part,null,null);
                 jobPlacement.setPlannedFeeder(feeder);
+                plannedFeeders.add(feeder);
 
                 try {
                     pickLocation = feeder.getPickLocation();
@@ -1287,6 +1290,9 @@ public class ReferencePnpJobProcessor extends AbstractPnpJobProcessor {
                 }
             }
             
+            // Photon feeders of this cycle advance together rather than one per pick
+            PhotonFeeder.feedAhead(plannedFeeders);
+
             // now request pre-rotation of all nozzles
             prerotateAllNozzles(pickLocator);
             

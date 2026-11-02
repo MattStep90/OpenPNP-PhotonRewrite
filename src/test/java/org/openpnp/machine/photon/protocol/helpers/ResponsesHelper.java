@@ -20,6 +20,7 @@ public class ResponsesHelper {
     public final GetFeederAddress getFeederAddress = new GetFeederAddress();
     public final IdentifyFeeder identifyFeeder = new IdentifyFeeder();
     public final ProgramFeederFloor programFeederFloor = new ProgramFeederFloor();
+    public final VendorOptions vendorOptions = new VendorOptions();
 
     public ResponsesHelper(int toAddress) {
         this.toAddress = toAddress;
@@ -125,6 +126,19 @@ public class ResponsesHelper {
             return PacketBuilder.response(toAddress, feederAddress)
                     .putOk()
                     .toPacket();
+        }
+    }
+
+    public class VendorOptions {
+        /**
+         * @param data up to 20 bytes of vendor data, the rest is zero
+         */
+        public Packet ok(int feederAddress, int... data) {
+            PacketBuilder builder = PacketBuilder.response(toAddress, feederAddress).putOk();
+            for (int i = 0; i < 20; i++) {
+                builder.putByte(i < data.length ? data[i] : 0);
+            }
+            return builder.toPacket();
         }
     }
 }
