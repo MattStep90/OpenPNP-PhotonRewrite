@@ -22,7 +22,9 @@ Branch `feature/photon-feeder-record`, based on OpenPnP `main` at 5bd404c (Novem
 - **Footprint overlay** on the top camera and a Feeders list sorted by slot.
 
 Most of these need the rewritten Photon feeder firmware (PhotonFeeder_F031) with the feeder record
-commands. A machine.xml saved by this fork may not load in stock OpenPnP, so keep a backup.
+commands. Get it, with prebuilt Stock and Ratchet builds, from
+[MattStep90/LumenPhotonRewrite](https://github.com/MattStep90/LumenPhotonRewrite).
+A machine.xml saved by this fork may not load in stock OpenPnP, so keep a backup.
 
 The rest of this README is the original OpenPnP README.
 
